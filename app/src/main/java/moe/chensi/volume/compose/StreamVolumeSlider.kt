@@ -1,5 +1,6 @@
 package moe.chensi.volume.compose
 
+import androidx.core.content.ContextCompat
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -50,10 +51,11 @@ internal object VolumeChangeObserver {
                     _volumeChangedCount++
                 }
             }
-            registeredContext!!.registerReceiver(
+            ContextCompat.registerReceiver(
+                registeredContext!!,
                 receiver!!,
                 IntentFilter(VOLUME_CHANGED_ACTION),
-                Context.RECEIVER_NOT_EXPORTED
+                ContextCompat.RECEIVER_NOT_EXPORTED
             )
         }
     }
