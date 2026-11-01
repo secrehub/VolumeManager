@@ -35,7 +35,15 @@ jobs:
 
       - name: Lint (API level report, does not fail the build)
         continue-on-error: true
-        run: ./gradlew lintRelease
+        run: |
+          ./gradlew lintRelease
+          REPORT=app/stdout
+          if [ -f "$REPORT" ]; then
+            echo "::group::API level issues (NewApi / InlinedApi)"
+            grep -E -A4 "\[(NewApi|InlinedApi)\]" "$REPORT" || echo "No API level issues"
+            echo "::endgroup::"
+            tail -n 3 "$REPORT"
+          fi
 
       - name: Sign APK
         env:
