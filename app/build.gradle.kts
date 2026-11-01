@@ -43,10 +43,10 @@ android {
 
     defaultConfig {
         applicationId = "moe.chensi.volume"
-        minSdk = 33
+        minSdk = 29
         targetSdk = 35
-        versionCode = 20
-        versionName = "0.3-beta.16"
+        versionCode = 21
+        versionName = "0.4-a11.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -69,6 +69,14 @@ android {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
+    }
+
+    lint {
+        // Print API-level problems to the build log so CI shows them,
+        // but never fail the release build because of lint.
+        abortOnError = false
+        textReport = true
+        textOutput = file("stdout")
     }
 
     buildFeatures {

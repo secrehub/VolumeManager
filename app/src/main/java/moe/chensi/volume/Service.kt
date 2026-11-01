@@ -31,10 +31,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.setViewTreeLifecycleOwner
@@ -129,6 +133,8 @@ class Service : AccessibilityService() {
 
     private fun createView(): View {
         return object : AbstractComposeView(this) {
+            private var blurEnabled by mutableStateOf(false)
+
             init {
                 val owner = object : SavedStateRegistryOwner {
                     private val lifecycleRegistry = LifecycleRegistry(this)
@@ -158,12 +164,23 @@ class Service : AccessibilityService() {
 
                 Log.i(TAG, "onAttachedToWindow manufacturer: ${Build.MANUFACTURER}")
 
-                @Suppress("SpellCheckingInspection") if (windowManager.isCrossWindowBlurEnabled && isHardwareAccelerated && Build.MANUFACTURER != "realme") {
-                    background =
-                        Reflect.on(rootSurfaceControl).call("createBackgroundBlurDrawable").apply {
-                            call("setBlurRadius", 200)
-                            call("setCornerRadius", 40f)
-                        }.get()
+                // Background blur needs Android 12 (cross window blur) and Android 13
+                // (`rootSurfaceControl`). On older versions use a solid background instead.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    try {
+                        @Suppress("SpellCheckingInspection")
+                        if (windowManager.isCrossWindowBlurEnabled && isHardwareAccelerated && Build.MANUFACTURER != "realme") {
+                            background =
+                                Reflect.on(rootSurfaceControl).call("createBackgroundBlurDrawable")
+                                    .apply {
+                                        call("setBlurRadius", 200)
+                                        call("setCornerRadius", 40f)
+                                    }.get()
+                            blurEnabled = true
+                        }
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "Background blur not available", e)
+                    }
                 }
 
                 this@Service.handler.startIdleTimer()
@@ -185,7 +202,11 @@ class Service : AccessibilityService() {
             override fun Content() {
                 return VolumeManagerTheme {
                     Surface(
-                        color = Color(1f, 1f, 1f, 0.3f),
+                        color = if (blurEnabled) {
+                            Color(1f, 1f, 1f, 0.3f)
+                        } else {
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+                        },
                         contentColor = MaterialTheme.colorScheme.onSurface,
                         shape = RoundedCornerShape(40f)
                     ) {
@@ -317,7 +338,10 @@ class Service : AccessibilityService() {
             }
         })
 
-        registerReceiver(broadcastReceiver, IntentFilter(ACTION_SHOW_VIEW), RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(
+            this, broadcastReceiver, IntentFilter(ACTION_SHOW_VIEW),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
 
         Log.i(TAG, "onServiceConnected done ${serviceInfo.capabilities.toString(2)}")
     }
@@ -336,12 +360,20 @@ class Service : AccessibilityService() {
 
         Toast.makeText(this, "Accessibility service died!", Toast.LENGTH_SHORT).show()
 
-        unregisterReceiver(broadcastReceiver)
+        try {
+            unregisterReceiver(broadcastReceiver)
+        } catch (_: IllegalArgumentException) {
+            // Not registered (service destroyed before it was connected)
+        }
     }
 
     val activityTaskManager by lazy { ActivityTaskManagerProxy(this) }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
+        if (!::manager.isInitialized) {
+            return false
+        }
+
         Log.i(
             TAG,
             "onKeyEvent action = ${event.action}, key code = ${event.keyCode}, shizuku permission = ${manager.shizukuStatus}"
@@ -358,7 +390,12 @@ class Service : AccessibilityService() {
         }
 
         // Check foreground task ignorance list
-        val task = activityTaskManager.getForegroundTask()
+        val task = try {
+            activityTaskManager.getForegroundTask()
+        } catch (e: Throwable) {
+            Log.w(TAG, "Can't get foreground task", e)
+            null
+        }
         Log.i(TAG, "onKeyEvent foreground task: $task")
 
         if (task != null) {

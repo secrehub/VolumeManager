@@ -2,6 +2,7 @@ on:
   push:
     branches:
       - main
+      - "claude/**"
     paths-ignore:
       - README.md
   pull_request:
@@ -26,21 +27,50 @@ jobs:
           java-version: "21"
           cache: "gradle"
 
+      - name: Unit tests
+        run: ./gradlew testReleaseUnitTest
+
       - name: Build
         run: ./gradlew assembleRelease
 
-      - name: Sign APK
-        run: |
-          echo "${{ secrets.KEYSTORE_FILE }}" | base64 -d > keystore.jks
-          $ANDROID_HOME/build-tools/34.0.0/zipalign -c -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
-          $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
-            --ks keystore.jks \
-            --ks-pass pass:${{ secrets.KEYSTORE_PASSWORD }} \
-            --ks-key-alias ${{ secrets.KEY_ALIAS }} \
-            --key-pass pass:${{ secrets.KEY_PASSWORD }} \
-            app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Lint (API level report, does not fail the build)
+        continue-on-error: true
+        run: ./gradlew lintRelease
 
-      - run: cp app/build/outputs/apk/release/app-release-unsigned.apk volume-manager.apk
+      - name: Sign APK
+        env:
+          KEYSTORE_FILE: ${{ secrets.KEYSTORE_FILE }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
+          echo "Using build tools: $BUILD_TOOLS"
+
+          if [ -n "$KEYSTORE_FILE" ]; then
+            echo "Signing with repository secrets"
+            echo "$KEYSTORE_FILE" | base64 -d > keystore.jks
+          else
+            # No secrets configured (e.g. a fork): use the public sideload test key.
+            # Fine for personal installs, NOT for publishing.
+            echo "Signing with public sideload key (ci/sideload.jks)"
+            cp ci/sideload.jks keystore.jks
+            KEYSTORE_PASSWORD=sideload-public
+            KEY_ALIAS=sideload
+            KEY_PASSWORD=sideload-public
+          fi
+
+          "$BUILD_TOOLS/zipalign" -p -f 4 \
+            app/build/outputs/apk/release/app-release-unsigned.apk aligned.apk
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks keystore.jks \
+            --ks-pass "pass:$KEYSTORE_PASSWORD" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --key-pass "pass:$KEY_PASSWORD" \
+            --out volume-manager.apk \
+            aligned.apk
+          "$BUILD_TOOLS/apksigner" verify --print-certs volume-manager.apk
+          rm -f keystore.jks
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

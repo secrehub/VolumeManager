@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
@@ -60,6 +61,7 @@ import androidx.core.net.toUri
 import moe.chensi.volume.compose.AboutDialog
 import moe.chensi.volume.compose.AppVolumeList
 import moe.chensi.volume.compose.CrashReportDialog
+import moe.chensi.volume.compose.DiagnosticsDialog
 import moe.chensi.volume.compose.SystemVolumePanel
 import moe.chensi.volume.compose.ToggleButton
 import moe.chensi.volume.ui.theme.VolumeManagerTheme
@@ -153,6 +155,7 @@ class MainActivity : ComponentActivity() {
             var showAll by remember { mutableStateOf(false) }
             var crashReport by remember { mutableStateOf<String?>(null) }
             var showAboutDialog by remember { mutableStateOf(false) }
+            var showDiagnostics by remember { mutableStateOf(false) }
 
             LaunchedEffect(showCrashReport) {
                 if (showCrashReport) {
@@ -176,6 +179,17 @@ class MainActivity : ComponentActivity() {
                                     crashReport = null
                                 })
                         }
+                    }
+                }
+            }
+
+            if (showDiagnostics) {
+                Dialog(
+                    onDismissRequest = { showDiagnostics = false },
+                    properties = DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    VolumeManagerTheme {
+                        DiagnosticsDialog(manager = manager, onDismiss = { showDiagnostics = false })
                     }
                 }
             }
@@ -204,6 +218,21 @@ class MainActivity : ComponentActivity() {
                                     uncheckedDescription = "Settings"
                                 ) {
                                     showAll = it
+                                }
+                            }
+
+                            TooltipBox(
+                                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
+                                    TooltipAnchorPosition.Below, 12.dp
+                                ),
+                                tooltip = { PlainTooltip { Text("Diagnostik") } },
+                                state = rememberTooltipState()
+                            ) {
+                                IconButton(onClick = { showDiagnostics = true }) {
+                                    Icon(
+                                        Icons.Default.Build,
+                                        contentDescription = "Diagnostik"
+                                    )
                                 }
                             }
 

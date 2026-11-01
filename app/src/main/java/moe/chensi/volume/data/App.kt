@@ -24,7 +24,9 @@ data class App(
     val packageInfo: PackageInfo,
     val name: String,
     private var preferences: AppPreferences,
-    private val savePreferences: () -> Unit
+    private val savePreferences: () -> Unit,
+    /** Called after the user changed this app's volume (used by the session engine) */
+    private val onVolumeChanged: (App) -> Unit = {}
 ) {
     companion object {
         val collator: Collator by lazy {
@@ -148,7 +150,8 @@ data class App(
         )
 
         // Apply volume to potentially new player
-        if (!config.setVolume(_volume)) {
+        // `IPlayer.setVolume` can't go above 100%
+        if (!config.setVolume(_volume.coerceAtMost(1f))) {
             // Player is dead, don't add it
             return
         }
@@ -163,7 +166,7 @@ data class App(
     fun applyVolume(value: Float) {
         val deadPlayers = mutableListOf<AudioPlaybackConfigurationProxy>()
         for (player in players) {
-            if (!player.setVolume(value)) {
+            if (!player.setVolume(value.coerceAtMost(1f))) {
                 deadPlayers.add(player)
             }
         }
@@ -200,7 +203,14 @@ data class App(
             _volume = value
             preferences.volume = value
             savePreferences()
+            onVolumeChanged(this)
         }
+
+    /** Update player state from the session engine (Android 10-12 without root). */
+    fun updateSessionState(playing: Boolean) {
+        isPlayer = true
+        isPlaying = playing
+    }
 
     private var _hidden by mutableStateOf(preferences.hidden)
     var hidden: Boolean

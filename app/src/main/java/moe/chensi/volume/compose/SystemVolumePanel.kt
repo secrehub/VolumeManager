@@ -3,6 +3,7 @@ package moe.chensi.volume.compose
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
+import android.os.Build
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
@@ -68,6 +69,13 @@ fun SystemVolumePanel(
 
     DisposableEffect(audioManager, showCallVolumeAlways) {
         if (showCallVolumeAlways) {
+            return@DisposableEffect onDispose { }
+        }
+
+        // `addOnModeChangedListener` only exists on Android 12+.
+        // On older versions fall back to the mode read when the panel is shown.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            inCallMode = isCallMode(audioManager.mode)
             return@DisposableEffect onDispose { }
         }
 
@@ -208,7 +216,7 @@ private fun RingFooter(
             addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
             addAction(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED)
         }
-        context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         onDispose {
             context.unregisterReceiver(receiver)
         }

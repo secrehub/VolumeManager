@@ -22,6 +22,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import moe.chensi.volume.data.App
+import moe.chensi.volume.engine.VolumeLimits
 import moe.chensi.volume.icons.Hook
 import moe.chensi.volume.icons.HookOff
 import moe.chensi.volume.ui.theme.Typography
@@ -40,6 +41,7 @@ fun AppVolumeSlider(
             modifier = Modifier.weight(1f),
             cornerRadius = 20.dp,
             value = app.volume,
+            valueRange = 0f..VolumeLimits.max,
             onValueChange = { value ->
                 app.volume = value
                 onChange?.invoke()
@@ -72,7 +74,7 @@ fun AppVolumeSlider(
                 )
 
                 Text(
-                    text = "${(app.volume * 100).roundToInt()}/100",
+                    text = "${(app.volume * 100).roundToInt()}%",
                     style = Typography.bodySmall,
                     maxLines = 1,
                 )
