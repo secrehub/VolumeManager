@@ -51,7 +51,13 @@ class SessionVolumeEngine(private val context: Context, private val host: Host) 
 
         private const val EFFECT_PRIORITY = 1000
         private const val SESSION_EXPIRE_MS = 20_000L
-        private const val EFFECT_RETRY_MS = 30_000L
+
+        /** Retry delays after a failed effect creation (e.g. "Effect library not loaded" right
+         *  after the session was created). */
+        private val EFFECT_RETRY_DELAYS_MS = longArrayOf(1_000L, 3_000L, 8_000L, 30_000L)
+
+        private fun retryDelay(failCount: Int): Long =
+            EFFECT_RETRY_DELAYS_MS[(failCount - 1).coerceIn(0, EFFECT_RETRY_DELAYS_MS.size - 1)]
         private const val ACTIVE_POLL_MS = 4_000L
         private const val IDLE_POLL_MS = 15_000L
 
@@ -88,6 +94,7 @@ class SessionVolumeEngine(private val context: Context, private val host: Host) 
         var error: String? = null
         /** Time of the last failed effect creation, 0 = never failed */
         var createFailedAt = 0L
+        var failCount = 0
 
         val effect: AudioEffect?
             get() = dynamics ?: equalizer
@@ -216,8 +223,11 @@ class SessionVolumeEngine(private val context: Context, private val host: Host) 
         if (!started) return
         worker.execute {
             var changed = false
+            val now = System.currentTimeMillis()
             for (s in sessions.values) {
                 if (s.packageName == packageName) {
+                    // User action: try to attach the effect right away
+                    ensureEffect(s, now, force = true)
                     applyTo(s)
                     changed = true
                 }
@@ -384,12 +394,26 @@ class SessionVolumeEngine(private val context: Context, private val host: Host) 
         }
         s.lastSeen = now
         s.active = active
-        if (s.effect == null && now - s.createFailedAt > EFFECT_RETRY_MS) {
-            createEffect(s)
-        }
+        ensureEffect(s, now, force = false)
         // Re-apply when the target volume changed or the effect was re-created
         if (s.effect != null && s.appliedVolume != host.volumeOf(packageName)) {
             applyTo(s)
+        }
+    }
+
+    /**
+     * Attach an effect to [s] if the app's volume isn't 100%. Apps left at 100% don't get an
+     * effect at all, so their audio path stays completely untouched.
+     */
+    private fun ensureEffect(s: SessionEffect, now: Long, force: Boolean) {
+        if (s.effect != null) return
+        if (host.volumeOf(s.packageName) == 1f) return
+        if (!force && s.failCount > 0 && now - s.createFailedAt < retryDelay(s.failCount)) return
+
+        createEffect(s)
+        if (s.effect == null) {
+            // Scan (and retry) again soon instead of waiting for the next poll
+            scheduleScan(retryDelay(s.failCount), replace = false)
         }
     }
 
@@ -416,6 +440,7 @@ class SessionVolumeEngine(private val context: Context, private val host: Host) 
                 }
             }
             s.dynamics = dp
+            s.failCount = 0
             s.createFailedAt = 0L
             s.error = null
             DiagLog.i("DynamicsProcessing terpasang di sesi ${s.sessionId} (${s.packageName}), kontrol=${dp.hasControl()}, channel=${dp.channelCount}")
@@ -428,12 +453,14 @@ class SessionVolumeEngine(private val context: Context, private val host: Host) 
             val eq = Equalizer(EFFECT_PRIORITY, s.sessionId)
             s.equalizer = eq
             s.eqRange = eq.bandLevelRange
+            s.failCount = 0
             s.createFailedAt = 0L
             s.error = null
             DiagLog.i("Equalizer (cadangan) terpasang di sesi ${s.sessionId}, rentang ${s.eqRange?.joinToString()} mB")
         } catch (e: Throwable) {
             s.error = "Tidak bisa memasang efek: ${e.javaClass.simpleName}: ${e.message}"
             s.createFailedAt = System.currentTimeMillis()
+            s.failCount++
             DiagLog.e("Efek gagal dipasang di sesi ${s.sessionId} (${s.packageName})", e)
         }
     }
@@ -492,6 +519,7 @@ class SessionVolumeEngine(private val context: Context, private val host: Host) 
                 effect = when {
                     s.dynamics != null -> "DynamicsProcessing"
                     s.equalizer != null -> "Equalizer"
+                    host.volumeOf(s.packageName) == 1f -> "tidak dipasang (100%)"
                     else -> "-"
                 },
                 hasControl = try {
