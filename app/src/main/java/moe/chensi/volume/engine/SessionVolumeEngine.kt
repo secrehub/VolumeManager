@@ -321,16 +321,16 @@ class SessionVolumeEngine(private val context: Context, private val host: Host) 
 
         val myPid = Process.myPid()
         var found = 0
-        for (track in tracks) {
-            if (track.pid == myPid) continue
+        for (t in tracks) {
+            if (t.pid == myPid) continue
             val pkg = try {
-                host.packageForPid(track.pid)
+                host.packageForPid(t.pid)
             } catch (e: Throwable) {
-                DiagLog.w("Gagal memetakan pid ${track.pid}", e)
+                DiagLog.w("Gagal memetakan pid ${t.pid}", e)
                 null
             } ?: continue
             if (pkg == context.packageName) continue
-            track(track.sessionId, pkg, -1, "audio_flinger", track.active, now)
+            track(t.sessionId, pkg, -1, "audio_flinger", t.active, now)
             found++
         }
         return found
@@ -446,7 +446,7 @@ class SessionVolumeEngine(private val context: Context, private val host: Host) 
             val eq = s.equalizer
             if (dp != null) {
                 if (volume == 1f) {
-                    dp.enabled = false
+                    dp.setEnabled(false)
                 } else {
                     // Limiter prevents clipping/distortion when boosting
                     dp.setLimiterAllChannelsTo(
@@ -455,15 +455,15 @@ class SessionVolumeEngine(private val context: Context, private val host: Host) 
                         )
                     )
                     dp.setInputGainAllChannelsTo(db)
-                    dp.enabled = true
+                    dp.setEnabled(true)
                 }
             } else if (eq != null) {
                 val range = s.eqRange ?: shortArrayOf(-1500, 1500)
                 val level = (db * 100).roundToInt().coerceIn(range[0].toInt(), range[1].toInt()).toShort()
-                for (band in 0 until eq.numberOfBands) {
+                for (band in 0 until eq.numberOfBands.toInt()) {
                     eq.setBandLevel(band.toShort(), level)
                 }
-                eq.enabled = volume != 1f
+                eq.setEnabled(volume != 1f)
             } else {
                 return
             }
