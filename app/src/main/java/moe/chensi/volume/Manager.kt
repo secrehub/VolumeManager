@@ -22,10 +22,12 @@ import moe.chensi.volume.engine.VolumeLimits
 import moe.chensi.volume.system.AudioPlaybackConfigurationProxy
 import moe.chensi.volume.system.NotificationManagerProxy
 import moe.chensi.volume.system.PackageManagerProxy
+import moe.chensi.volume.system.SystemVolume
 import org.joor.Reflect
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuProvider
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 
 @SuppressLint("PrivateApi")
 class Manager(private val context: Context, dataStore: DataStore<Preferences>) {
@@ -181,6 +183,11 @@ class Manager(private val context: Context, dataStore: DataStore<Preferences>) {
         )
 
         VolumeLimits.max = maxVolume
+
+        // Avoid "Not allowed to change Do Not Disturb state" when ring volume hits 0
+        // (separate thread: this function routes binder calls through Shizuku, which would make
+        // the permission check run as the shell user instead of this app)
+        thread(name = "dnd-access") { SystemVolume.ensureDndAccess(context) }
 
         if (engineMode == EngineMode.SessionEffect) {
             sessionEngine.start()

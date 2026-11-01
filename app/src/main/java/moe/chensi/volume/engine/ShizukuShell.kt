@@ -3,7 +3,6 @@ package moe.chensi.volume.engine
 import org.joor.Reflect
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuRemoteProcess
-import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
@@ -66,29 +65,27 @@ object ShizukuShell {
             }
         }
 
-        val finished = try {
-            process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
-        } catch (_: Throwable) {
-            false
+        // Note: `ShizukuRemoteProcess.waitFor(timeout, unit)` returns false immediately on
+        // some Shizuku versions, so wait with the plain `waitFor()` on a helper thread.
+        var exitCode = -1
+        val waiter = thread(name = "shizuku-wait") {
+            exitCode = try {
+                process.waitFor()
+            } catch (_: Throwable) {
+                -1
+            }
         }
+        waiter.join(timeoutMs)
+        val finished = !waiter.isAlive
         if (!finished) {
             try {
                 process.destroy()
             } catch (_: Throwable) {
             }
         }
-        outThread.join(1000)
+        // If waiting failed early, the output (until EOF) is still the best signal of completion
+        outThread.join(if (finished && exitCode == -1) timeoutMs else 2000)
         errThread.join(1000)
-
-        val exitCode = if (finished) {
-            try {
-                process.exitValue()
-            } catch (_: Throwable) {
-                -1
-            }
-        } else {
-            -1
-        }
 
         return Result(
             exitCode,

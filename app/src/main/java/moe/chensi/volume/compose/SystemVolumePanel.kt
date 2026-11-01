@@ -36,6 +36,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import moe.chensi.volume.engine.DiagLog
+import moe.chensi.volume.system.SystemVolume
 import moe.chensi.volume.R
 import moe.chensi.volume.system.NotificationManagerProxy
 
@@ -233,8 +235,10 @@ private fun RingFooter(
             uncheckedDescription = stringResource(R.string.enable_vibrate_mode),
             uncheckedIcon = Icons.Default.VolumeUp
         ) {
-            audioManager.ringerMode =
+            SystemVolume.setRingerMode(
+                context, audioManager,
                 if (it) AudioManager.RINGER_MODE_VIBRATE else AudioManager.RINGER_MODE_NORMAL
+            )
             ringerMode = audioManager.ringerMode
             onChange?.invoke()
         }
@@ -246,9 +250,13 @@ private fun RingFooter(
             uncheckedDescription = stringResource(R.string.enable_do_not_disturb),
             uncheckedIcon = Icons.Default.NotificationsActive
         ) {
-            notificationManagerProxy.setInterruptionFilter(
-                if (it) NotificationManager.INTERRUPTION_FILTER_NONE else NotificationManager.INTERRUPTION_FILTER_ALL
-            )
+            try {
+                notificationManagerProxy.setInterruptionFilter(
+                    if (it) NotificationManager.INTERRUPTION_FILTER_NONE else NotificationManager.INTERRUPTION_FILTER_ALL
+                )
+            } catch (e: Throwable) {
+                DiagLog.w("Gagal mengubah Jangan Ganggu", e)
+            }
             interruptionFilter = notificationManagerProxy.getCurrentInterruptionFilter()
             onChange?.invoke()
         }

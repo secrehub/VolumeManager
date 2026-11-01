@@ -47,6 +47,8 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import moe.chensi.volume.compose.AppVolumeList
+import moe.chensi.volume.compose.CompactVolumePopup
+import moe.chensi.volume.data.PopupSettings
 import moe.chensi.volume.compose.SystemVolumePanel
 import moe.chensi.volume.compose.VolumeChangeObserver
 import moe.chensi.volume.system.ActivityTaskManagerProxy
@@ -63,7 +65,6 @@ class Service : AccessibilityService() {
 
         private const val ANIMATION_DURATION = 300L
 
-        private const val IDLE_TIMEOUT = 5000L
         private const val AUTO_REPEAT_DELAY = 100L
         private const val AUTO_REPEAT_INITIAL_DELAY = 500L
     }
@@ -76,6 +77,7 @@ class Service : AccessibilityService() {
         )
     }
     private lateinit var manager: Manager
+    private val popupSettings by lazy { PopupSettings.get(this) }
 
     private val handler = object : Handler(Looper.getMainLooper()) {
         fun hideView() {
@@ -98,7 +100,7 @@ class Service : AccessibilityService() {
 
         fun startIdleTimer() {
             removeCallbacks(hideViewRunnable)
-            postDelayed(hideViewRunnable, IDLE_TIMEOUT)
+            postDelayed(hideViewRunnable, popupSettings.autoHideSeconds * 1000L)
         }
 
         private var repeatAdjustVolumeDirection = 0
@@ -166,7 +168,10 @@ class Service : AccessibilityService() {
 
                 // Background blur needs Android 12 (cross window blur) and Android 13
                 // (`rootSurfaceControl`). On older versions use a solid background instead.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // The compact popup draws its own rounded background
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    popupSettings.style == PopupSettings.Style.Classic
+                ) {
                     try {
                         @Suppress("SpellCheckingInspection")
                         if (windowManager.isCrossWindowBlurEnabled && isHardwareAccelerated && Build.MANUFACTURER != "realme") {
@@ -200,6 +205,17 @@ class Service : AccessibilityService() {
 
             @Composable
             override fun Content() {
+                if (popupSettings.style == PopupSettings.Style.Compact) {
+                    return VolumeManagerTheme {
+                        CompactVolumePopup(
+                            manager = manager,
+                            settings = popupSettings,
+                            onInteract = this@Service.handler::startIdleTimer,
+                            onOpenSettings = { openPopupSettings() }
+                        )
+                    }
+                }
+
                 return VolumeManagerTheme {
                     Surface(
                         color = if (blurEnabled) {
@@ -253,12 +269,42 @@ class Service : AccessibilityService() {
     private var view: View? = null
     private var viewVisible = false
 
+    private fun applyPopupPosition() {
+        val margin = (16 * resources.displayMetrics.density).toInt()
+        when (popupSettings.position) {
+            PopupSettings.Position.Right -> {
+                layoutParams.gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                layoutParams.x = margin
+            }
+
+            PopupSettings.Position.Left -> {
+                layoutParams.gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                layoutParams.x = margin
+            }
+
+            PopupSettings.Position.Center -> {
+                layoutParams.gravity = Gravity.CENTER
+                layoutParams.x = 0
+            }
+        }
+    }
+
+    private fun openPopupSettings() {
+        handler.hideView()
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_OPEN_POPUP_SETTINGS, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        )
+    }
+
     private fun showView() {
         if (view == null) {
             Log.i(TAG, "add view")
             // The view doesn't respond to input events if reused
             view = createView()
             layoutParams.alpha = 0f
+            applyPopupPosition()
             windowManager.addView(view, layoutParams)
         }
 

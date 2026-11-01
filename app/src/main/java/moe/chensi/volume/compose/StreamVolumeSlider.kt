@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import moe.chensi.volume.system.SystemVolume
 import moe.chensi.volume.ui.theme.Typography
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -122,8 +123,11 @@ fun StreamVolumeSlider(
                     return@TrackSlider
                 }
 
-                volume = target
-                audioManager.setStreamVolume(streamType, target, 0)
+                if (SystemVolume.setStreamVolume(context, audioManager, streamType, target)) {
+                    volume = target
+                } else {
+                    volume = audioManager.getStreamVolume(streamType)
+                }
                 onChange?.invoke()
             },
         ) {

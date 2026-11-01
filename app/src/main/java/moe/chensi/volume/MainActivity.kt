@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
@@ -62,6 +63,8 @@ import moe.chensi.volume.compose.AboutDialog
 import moe.chensi.volume.compose.AppVolumeList
 import moe.chensi.volume.compose.CrashReportDialog
 import moe.chensi.volume.compose.DiagnosticsDialog
+import moe.chensi.volume.compose.PopupSettingsDialog
+import moe.chensi.volume.data.PopupSettings
 import moe.chensi.volume.compose.SystemVolumePanel
 import moe.chensi.volume.compose.ToggleButton
 import moe.chensi.volume.ui.theme.VolumeManagerTheme
@@ -75,6 +78,8 @@ class MainActivity : ComponentActivity() {
         private const val TAG = "VolumeManager.Activity"
 
         private const val SERVICE_NAME_SEPARATOR = ":"
+
+        const val EXTRA_OPEN_POPUP_SETTINGS = "open_popup_settings"
     }
 
     private lateinit var application: MyApplication
@@ -156,6 +161,27 @@ class MainActivity : ComponentActivity() {
             var crashReport by remember { mutableStateOf<String?>(null) }
             var showAboutDialog by remember { mutableStateOf(false) }
             var showDiagnostics by remember { mutableStateOf(false) }
+            var showPopupSettings by remember {
+                mutableStateOf(intent?.getBooleanExtra(EXTRA_OPEN_POPUP_SETTINGS, false) == true)
+            }
+
+            if (showPopupSettings) {
+                Dialog(
+                    onDismissRequest = { showPopupSettings = false },
+                    properties = DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    VolumeManagerTheme {
+                        PopupSettingsDialog(
+                            settings = PopupSettings.get(this@MainActivity),
+                            onTestPopup = {
+                                showPopupSettings = false
+                                sendBroadcast(Intent(Service.ACTION_SHOW_VIEW).setPackage(packageName))
+                            },
+                            onDismiss = { showPopupSettings = false }
+                        )
+                    }
+                }
+            }
 
             LaunchedEffect(showCrashReport) {
                 if (showCrashReport) {
@@ -218,6 +244,21 @@ class MainActivity : ComponentActivity() {
                                     uncheckedDescription = "Settings"
                                 ) {
                                     showAll = it
+                                }
+                            }
+
+                            TooltipBox(
+                                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
+                                    TooltipAnchorPosition.Below, 12.dp
+                                ),
+                                tooltip = { PlainTooltip { Text("Pengaturan popup") } },
+                                state = rememberTooltipState()
+                            ) {
+                                IconButton(onClick = { showPopupSettings = true }) {
+                                    Icon(
+                                        Icons.Default.Tune,
+                                        contentDescription = "Pengaturan popup"
+                                    )
                                 }
                             }
 
